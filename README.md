@@ -1,156 +1,133 @@
-# Personal CFO Agent — когнитивный финансовый ассистент
+# Personal CFO Agent
 
-Учебный проект по курсу **Cognitive Technologies**, Практическое задание 1 —
-«Анализ когнитивных функций современной AI-системы».
+A multi-tenant personal finance assistant: a Telegram bot that talks to an LLM, calls
+financial tools and stores everything in **the user's own Notion workspace**.
 
-**Команда:** Aniyar Baibossyn, Salamat Sagyndykov, Shynggys Saiduldinov.
+Built for the course **Cognitive Technologies**, Practical Assignment 1.
+Team: Aniyar Baibossyn, Salamat Sagyndykov, Shynggys Saiduldinov.
 
-Анализируемая система — не чужой продукт, а собственный агент, который лежит в этом репозитории.
-Поэтому в отчёте каждый вывод подтверждается ссылкой на конкретный файл и модуль, а не на догадки.
+## Why this project
 
-Отчёт по заданию: [`docs/REPORT_Assignment1.md`](docs/REPORT_Assignment1.md)  
-Архитектура и карта когнитивных функций по файлам: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+A typical hobby Telegram bot hard-codes one owner: one Notion token, one set of database
+IDs in environment variables. This project removes that coupling. Any person can start the
+same bot, connect **their own** Notion and get their own private set of databases created
+automatically. Nothing about the owner is baked into the code.
 
----
+## What it can do
 
-## Что это такое
+* Understands free-form messages: `spent 3500 on groceries with Kaspi`, `salary 400000 to Kaspi`
+* Saves expenses and incomes as Notion rows and automatically adjusts account balances
+* Answers analytical questions: `how much did I spend this month`, `top categories`
+* Edits and deletes previous records found by name
+* Gives saving advice based on real numbers, not guesses
+* Exposes its own behaviour: `/status` (state and tool statistics) and `/trace` (last actions)
 
-Персональный финансовый ассистент в Telegram. Пользователь пишет обычным языком
-«потратил 3500 на продукты с Каспи» — агент сам решает, какие инструменты вызвать,
-записывает транзакцию в Notion, пересчитывает баланс счёта и отвечает человеческим текстом.
-
-Главное отличие от частной версии: **один бот — много пользователей.**
-Здесь нет зашитых ID баз и одного хозяина. Каждый человек подключает свой Notion,
-и бот сам создаёт ему четыре базы по шаблону — вручную ничего создавать не надо.
-
-## Возможности
-
-- Запись расходов и доходов с естественного языка
-- Автоматический пересчёт балансов счетов
-- Отчёты за день / неделю / месяц, разбивка по категориям
-- Исправление записей по названию («поменяй категорию у такси на Транспорт»)
-- Финансовый совет на основе реальных цифр из Notion, а не общих слов
-- Журнал вызовов инструментов и самоотчёт (`/status`, `/trace`) — это нужно для анализа
-  функции Self-evaluation в отчёте
-
-## Архитектура коротко
+## Architecture at a glance
 
 ```
-Telegram (aiogram 3)
-        │
-   bot/handlers.py ──► core/agent.py ──► LLM (OpenRouter, tool calling)
-        │                  │
-        │                  ▼
-        │            core/tools.py  — 8 финансовых инструментов
-        │                  │
-        │                  ▼
-        │          core/notion_client.py ──► Notion API (базы пользователя)
-        │
-   core/users.py — профиль каждого пользователя (свой токен, свои базы)
+Telegram  ->  bot/handlers.py        interface layer, no business logic
+          ->  core/agent.py          model -> tool -> model loop (decision making)
+          ->  core/tools.py          10 finance tools, each returns ok=true/false
+          ->  core/notion_client.py  thin Notion API client, one per user
+          ->  Notion databases       long-term memory
+
+core/users.py      per-user profiles: token + database ids  (multi-tenancy)
+core/memory.py     short-term sliding window of the dialogue
+core/tool_log.py   log of every tool call (basis for self-evaluation)
 ```
 
----
+See `docs/ARCHITECTURE.md` for the mapping between cognitive functions and source files,
+and `docs/REPORT_Assignment1.md` for the full assignment report.
 
-## Запуск за 5 шагов
+## Setup
 
-### Шаг 1. Скачать и установить
+### 1. Install
 
 ```bash
 git clone https://github.com/Aniyear/ct_assignment1.git
 cd ct_assignment1
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # macOS / Linux
 pip install -r requirements.txt
 ```
 
-### Шаг 2. Создать Telegram-бота
+### 2. Configure
 
-Напиши [@BotFather](https://t.me/BotFather) → `/newbot` → скопируй токен.
+Copy `.env.example` to `.env` and fill in two required values:
 
-### Шаг 3. Получить ключ к модели
+| Variable | Where to get it |
+| --- | --- |
+| `TELEGRAM_BOT_TOKEN` | @BotFather in Telegram, command `/newbot` |
+| `OPENROUTER_API_KEY` | openrouter.ai -> Keys -> Create key |
 
-Зарегистрируйся на [openrouter.ai](https://openrouter.ai) → Keys → создай ключ.
-Модель можно любую с поддержкой function calling, по умолчанию `deepseek/deepseek-chat`.
+Optional values (`OPENROUTER_MODEL`, `LLM_BASE_URL`, `USERS_FILE`, `ALLOWED_USER_IDS`,
+`DEFAULT_CURRENCY`, `TIMEZONE`, `PORT`) are documented inside `.env.example`.
 
-### Шаг 4. Заполнить `.env`
+**Any OpenAI-compatible provider works.** Examples:
 
-```bash
-cp .env.example .env
+```env
+# free models through OpenRouter
+OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
+
+# or Google AI Studio directly
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+OPENROUTER_API_KEY=<Google AI Studio key>
+OPENROUTER_MODEL=gemini-2.0-flash
 ```
 
-Минимум, без которого бот не стартует — всего две строки:
+The model **must support function calling**, otherwise the agent cannot write to Notion.
 
-```
-TELEGRAM_BOT_TOKEN=123456:AA...
-OPENROUTER_API_KEY=sk-or-v1-...
-```
-
-Никаких ID баз Notion в `.env` больше нет — это и есть главное отличие от персональной версии.
-
-### Шаг 5. Запустить
+### 3. Run
 
 ```bash
 python main.py
 ```
 
----
+### 4. Connect Notion (done by each user inside the bot)
 
-## Как подключается новый пользователь
+1. Open `notion.so/my-integrations`, create an integration, copy the Internal Integration Secret (`ntn_...`).
+2. In the bot: `/connect ntn_...` (then delete that message from the chat).
+3. Create an empty Notion page, open `...` -> **Connections** -> add your integration.
+4. In the bot: `/setup <page link>`. The bot creates four databases and seeds 15 categories.
+5. Start writing: `add an account Card with balance 100000`, then `spent 2000 on coffee from Card`.
 
-Это делает сам человек в чате с ботом, владелец бота ничего не настраивает.
+## Deploying on Render
 
-1. **Создать интеграцию Notion.** [notion.so/my-integrations](https://www.notion.so/my-integrations) →
-   New integration → имя любое → скопировать Internal Integration Secret (`ntn_...`).
-2. **Создать в Notion пустую страницу**, например «Мои финансы».
-3. **Дать интеграции доступ к странице:** на странице → «…» → Connections → выбрать свою интеграцию.
-   Без этого шага Notion вернёт 404 — это самая частая ошибка.
-4. **В боте:**
+* Type: **Web Service**, Build Command `pip install -r requirements.txt`, Start Command `python main.py`
+* Add the same environment variables
+* Attach a **Disk** and set `USERS_FILE=/var/data/users.json`, otherwise user profiles are erased on every deploy
+* The built-in health endpoints `/` and `/health` keep the service alive
 
-```
-/connect ntn_ваш_токен
-/setup https://www.notion.so/ссылка-на-вашу-страницу
-```
+## Giving the bot to other people
 
-Команда `/setup` создаст на этой странице четыре базы и заполнит категории по умолчанию:
+Nothing extra is needed: every user runs `/connect` and `/setup` with their own Notion, and
+profiles are isolated by Telegram user id. To restrict access, list allowed ids in
+`ALLOWED_USER_IDS`. To leave, a user sends `/disconnect`, which deletes the stored token.
 
-| База | Что хранит |
-|------|-------------|
-| 💸 Расходы | название, сумма, дата, категория, счёт, заметки |
-| 💰 Доходы | источник, сумма, дата, счёт, заметки |
-| 🏦 Счета | название, текущий баланс, валюта |
-| 🏷 Категории | название, тип (расход/доход) |
+## Commands
 
-После этого можно сразу писать: «добавь счёт Каспи с балансом 200000», потом
-«потратил 3500 на продукты с Каспи».
+| Command | Purpose |
+| --- | --- |
+| `/start`, `/help` | onboarding and examples |
+| `/connect <token>` | connect a personal Notion integration |
+| `/setup <page link>` | create the four databases |
+| `/status` | connection state, model, tool statistics |
+| `/trace` | the last ten tool calls with success flags and timings |
+| `/forget` | clear the short-term conversation memory |
+| `/disconnect` | delete the stored profile and token |
 
-## Команды
+## Data model created by /setup
 
-| Команда | Что делает |
-|---------|------------|
-| `/start` | приветствие и статус подключения |
-| `/connect <токен>` | привязать свой Notion |
-| `/setup <ссылка>` | создать базы по шаблону |
-| `/status` | что подключено и какие инструменты доступны |
-| `/trace` | последние вызовы инструментов с длительностями |
-| `/forget` | очистить контекст диалога |
-| `/disconnect` | удалить свой профиль из бота |
-| `/help` | справка |
+| Database | Key properties |
+| --- | --- |
+| Finance - Expenses | Name, Amount, Date, Notes, Category (relation), Account (relation) |
+| Finance - Incomes | Source, Amount, Date, Notes, Account (relation) |
+| Finance - Accounts | Name, Balance, Currency |
+| Finance - Categories | Name, Kind (expense / income) |
 
-## Деплой на Render
+## Security notes
 
-1. New → Web Service → подключить этот репозиторий
-2. Build: `pip install -r requirements.txt`, Start: `python main.py`
-3. Environment: добавить `TELEGRAM_BOT_TOKEN` и `OPENROUTER_API_KEY`
-4. Важно: файловая система Render эфемерна. Чтобы профили пользователей не стирались
-   при деплое, подключи Disk (Mount Path `/var/data`) и поставь `USERS_FILE=/var/data/users.json`
-
-## Безопасность
-
-- `.env` и `data/users.json` в `.gitignore` — токены никогда не попадают в репозиторий
-- Токен Notion показывается в ответах только замаскированным (`ntn_…abcd`)
-- Сообщение с `/connect` бот просит удалить из чата сразу после подключения
-- `ALLOWED_USER_IDS` ограничивает круг пользователей, если бот не должен быть публичным
-
-## Лицензия
-
-Учебный проект, MIT.
+* Tokens are never committed: `.env` and `data/` are in `.gitignore`
+* A Notion integration only sees the pages explicitly shared with it
+* `/status` shows a masked token only (`ntn_123...abcd`)

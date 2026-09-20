@@ -1,56 +1,50 @@
-# Архитектура системы
+# Architecture
 
-Документ нужен для двух вещей: понять код и защитить отчёт. Каждому утверждению
-в отчёте соответствует файл из этой таблицы.
+## Layers
 
-## Слои
+| Layer | Files | Responsibility |
+| --- | --- | --- |
+| Interface | `bot/handlers.py`, `bot/keyboards.py`, `bot/texts.py` | Telegram I/O only. No business logic, no Notion calls. |
+| Reasoning | `core/agent.py` | The model -> tool -> model loop, system prompt, iteration limit. |
+| Action | `core/tools.py` | Ten finance tools plus the JSON schemas exposed to the model. |
+| Integration | `core/notion_client.py`, `core/workspace.py` | Notion REST calls and the database template. |
+| State | `core/users.py`, `core/memory.py`, `core/tool_log.py` | Persistent profiles, short-term dialogue window, tool call journal. |
+| Runtime | `main.py`, `config/settings.py` | Process startup, health endpoint, environment configuration. |
 
-| Слой | Файл | Ответственность |
-|------|------|-----------------|
-| Интерфейс | `bot/handlers.py`, `bot/keyboards.py`, `bot/texts.py` | приём сообщений, команды, кнопки, формат ответа |
-| Решение | `core/agent.py` | цикл tool-calling: выбор инструмента, аргументов, момента остановки |
-| Действия | `core/tools.py` | 10 финансовых инструментов и их JSON-схемы |
-| Доступ к данным | `core/notion_client.py` | HTTP-клиент Notion, чтение/запись свойств |
-| Модель мира | `core/workspace.py` | схема четырёх баз и их автосоздание |
-| Память | `core/memory.py`, `core/users.py` | окно диалога и долговременные профили |
-| Рефлексия | `core/tool_log.py` | журнал вызовов, время, успех/ошибка, статистика |
-| Конфигурация | `config/settings.py` | только сервисные ключи, ничего персонального |
-| Запуск | `main.py` | polling + health-check |
+## Path of one message
 
-## Путь одного сообщения
+1. `bot/handlers.on_text` receives the text and checks the access guard and profile readiness.
+2. The short-term history is taken from `core/memory.py`.
+3. `core/agent.respond` sends system prompt + history + message + tool schemas to the model.
+4. If the model answers with `tool_calls`, each call is executed by `core/tools.FinanceTools.call`.
+5. Every call is timed and written to `core/tool_log.py` together with its `ok` flag.
+6. The tool result is appended to the message list and the model is called again.
+7. The loop ends when the model returns plain text or when `MAX_TOOL_ITERATIONS` is reached.
 
-```
-«потратил 3500 на продукты с Каспи»
-   ↓ bot/handlers.py: on_text — проверка доступа и готовности профиля
-   ↓ core/memory.py: подтягивается окно последних реплик
-   ↓ core/agent.py: системный промпт + история + запрос → LLM
-   ↓ LLM возвращает tool_call: add_expense(amount=3500, title="Продукты", category="Продукты", account="Каспи")
-   ↓ core/tools.py: поиск категории и счёта по названию → создание строки → списание с баланса
-   ↓ core/tool_log.py: запись факта вызова, длительности и результата
-   ↓ core/agent.py: результат возвращается в модель вторым ходом
-   ↓ ответ пользователю: «Записал 3 500 ₸ … Баланс Каспи: 96 500 ₸»
-```
+## Multi-tenancy
 
-Минимум два обращения к модели на запись и до шести на сложный запрос — предел задан
-`MAX_TOOL_ITERATIONS`. Это и есть главный источник задержки.
+`core/users.py` stores one `UserProfile` per Telegram id: Notion token, parent page id and the
+four database ids. `FinanceTools` builds a `NotionClient` from that profile, so two users never
+share a client, a token or a database. Nothing user-specific exists in `config/settings.py`.
 
-## Карта когнитивных функций → код
+## Cognitive function to source file map
 
-| Функция | Где искать в коде |
-|---------|-------------------|
-| Восприятие | `bot/handlers.py::on_text` |
-| Внимание | `core/agent.py::SYSTEM_PROMPT`, `core/memory.py::MAX_TURNS` |
-| Память | `core/memory.py`, `core/users.py`, базы Notion |
-| Представление знаний | `core/workspace.py::FIELDS`, `core/tools.py::TOOLS_SCHEMA` |
-| Обучение | отсутствует (нет модуля обновления параметров или правил) |
-| Рассуждение | LLM + арифметика в `core/tools.py::summary` |
-| Принятие решений | `core/agent.py::respond` (выбор инструмента) |
-| Планирование | цепочка tool_calls в `core/agent.py` |
-| Коммуникация | `bot/*`, правила 6–7 в `SYSTEM_PROMPT` |
-| Самооценка | `core/tool_log.py`, `/status`, `/trace`, поле `ok` у всех инструментов |
+| Cognitive function | Where it lives |
+| --- | --- |
+| Perception | `bot/handlers.py` (input channel), LLM parsing of free text into tool arguments |
+| Attention | `core/agent.SYSTEM_PROMPT`, `core/memory.MAX_TURNS`, tool selection |
+| Memory | `core/memory.py` (short term), `core/users.py` and Notion databases (long term) |
+| Knowledge representation | `core/workspace.FIELDS`, `core/tools.TOOLS_SCHEMA` |
+| Learning | absent by design, see the report |
+| Reasoning | the iterative loop in `core/agent.respond` |
+| Decision making | choice of tool and arguments inside that loop |
+| Planning | multi-step chains, e.g. `list_accounts` -> `add_expense` -> balance update |
+| Communication | `bot/texts.py`, prompt formatting rules 6 and 7 |
+| Self-evaluation | `core/tool_log.py`, `/status`, `/trace`, prompt rule 2 |
 
-## Сознательные ограничения
+## Deliberate limitations
 
-- Синхронный `requests` вместо асинхронного клиента: проще читается, вызовы вынесены в `asyncio.to_thread`.
-- Нет ОРМ и кэша справочников: каждый поиск категории — запрос в Notion. Это честно отражено в отчёте как ограничение.
-- Профили хранятся в JSON-файле, а не в БД: для учебного масштаба достаточно.
+* No vector store and no retrieval: the model sees only the last twelve turns.
+* No fine-tuning and no weight updates: behaviour between sessions is identical.
+* No autonomous actions: the agent acts only in response to a user message.
+* No background scheduler in this version, so there is no self-initiated behaviour.
