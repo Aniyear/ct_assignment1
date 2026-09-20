@@ -6,13 +6,6 @@ financial tools and stores everything in **the user's own Notion workspace**.
 Built for the course **Cognitive Technologies**, Practical Assignment 1.
 Team: Aniyar Baibossyn, Salamat Sagyndykov, Shynggys Saiduldinov.
 
-## Why this project
-
-A typical hobby Telegram bot hard-codes one owner: one Notion token, one set of database
-IDs in environment variables. This project removes that coupling. Any person can start the
-same bot, connect **their own** Notion and get their own private set of databases created
-automatically. Nothing about the owner is baked into the code.
-
 ## What it can do
 
 * Understands free-form messages: `spent 3500 on groceries with Kaspi`, `salary 400000 to Kaspi`
@@ -105,19 +98,6 @@ If a required variable is missing, the process exits immediately and names it.
 3. Create an empty Notion page, open `...` -> **Connections** -> add your integration.
 4. In the bot: `/setup <page link>`. The bot creates four databases and seeds 15 categories.
 5. Start writing: `add an account Card with balance 100000`, then `spent 2000 on coffee from Card`.
-
-## Deploying on Render
-
-* Type: **Web Service**, Build Command `pip install -r requirements.txt`, Start Command `python main.py`
-* Add the same environment variables
-* Attach a **Disk** and set `USERS_FILE=/var/data/users.json`, otherwise user profiles are erased on every deploy
-* The built-in health endpoints `/` and `/health` keep the service alive
-
-## Giving the bot to other people
-
-Nothing extra is needed: every user runs `/connect` and `/setup` with their own Notion, and
-profiles are isolated by Telegram user id. To restrict access, list allowed ids in
-`ALLOWED_USER_IDS`. To leave, a user sends `/disconnect`, which deletes the stored token.
 
 ## Commands
 

@@ -55,7 +55,7 @@ class Agent:
         }
         try:
             response = requests.post(url, headers=headers, json=payload,
-                                     timeout=self.settings.llm_timeout)
+                                     timeout=self.settings.llm_timeout, verify=False)
         except Exception as exc:
             return {"error": f"Model unavailable: {exc}"}
         if response.status_code >= 400:
