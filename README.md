@@ -21,6 +21,7 @@ automatically. Nothing about the owner is baked into the code.
 * Edits and deletes previous records found by name
 * Gives saving advice based on real numbers, not guesses
 * Exposes its own behaviour: `/status` (state and tool statistics) and `/trace` (last actions)
+* Works with any OpenAI-compatible model provider, switched by one environment variable
 
 ## Architecture at a glance
 
@@ -54,37 +55,50 @@ pip install -r requirements.txt
 
 ### 2. Configure
 
-Copy `.env.example` to `.env` and fill in two required values:
+Copy `.env.example` to `.env`. Two things are required: the Telegram bot token from
+@BotFather, and an API key for one model provider.
 
-| Variable | Where to get it |
-| --- | --- |
-| `TELEGRAM_BOT_TOKEN` | @BotFather in Telegram, command `/newbot` |
-| `OPENROUTER_API_KEY` | openrouter.ai -> Keys -> Create key |
+### 3. Choose a model provider
 
-Optional values (`OPENROUTER_MODEL`, `LLM_BASE_URL`, `USERS_FILE`, `ALLOWED_USER_IDS`,
-`DEFAULT_CURRENCY`, `TIMEZONE`, `PORT`) are documented inside `.env.example`.
+The agent speaks the OpenAI chat-completions protocol, so the provider is pure configuration.
+Set `AI_PROVIDER` and fill in only the matching key.
 
-**Any OpenAI-compatible provider works.** Examples:
+| `AI_PROVIDER` | Key variable | Where to get the key | Default model |
+| --- | --- | --- | --- |
+| `openrouter` (default) | `OPENROUTER_API_KEY` | openrouter.ai/keys | `deepseek/deepseek-chat` |
+| `gemini` | `GEMINI_API_KEY` | aistudio.google.com/apikey | `gemini-2.0-flash` |
+| `groq` | `GROQ_API_KEY` | console.groq.com/keys | `llama-3.3-70b-versatile` |
+| `custom` | `LLM_API_KEY` | any OpenAI-compatible service | set `LLM_MODEL` and `LLM_BASE_URL` yourself |
+
+**Google Gemini example** — this is all you need in `.env`:
 
 ```env
-# free models through OpenRouter
-OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
-
-# or Google AI Studio directly
-LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
-OPENROUTER_API_KEY=<Google AI Studio key>
-OPENROUTER_MODEL=gemini-2.0-flash
+TELEGRAM_BOT_TOKEN=123456:ABC...
+AI_PROVIDER=gemini
+GEMINI_API_KEY=AIza...
 ```
 
-The model **must support function calling**, otherwise the agent cannot write to Notion.
+The base URL and the model are filled in from the preset
+(`https://generativelanguage.googleapis.com/v1beta/openai`, `gemini-2.0-flash`).
+To pick another Gemini model, add `LLM_MODEL=gemini-2.5-flash` — `LLM_MODEL` and
+`LLM_BASE_URL` always override the preset.
 
-### 3. Run
+> The model **must support function calling**, otherwise the agent cannot write to Notion.
+> `gemini-2.0-flash`, `gemini-2.5-flash` and `deepseek/deepseek-chat` all do. Free tiers have
+> rate limits, so a long tool chain may occasionally hit a 429.
+
+Other optional variables (`LLM_TIMEOUT`, `MAX_TOOL_ITERATIONS`, `USERS_FILE`,
+`ALLOWED_USER_IDS`, `DEFAULT_CURRENCY`, `TIMEZONE`, `PORT`) are documented in `.env.example`.
+
+### 4. Run
 
 ```bash
 python main.py
 ```
 
-### 4. Connect Notion (done by each user inside the bot)
+If a required variable is missing, the process exits immediately and names it.
+
+### 5. Connect Notion (done by each user inside the bot)
 
 1. Open `notion.so/my-integrations`, create an integration, copy the Internal Integration Secret (`ntn_...`).
 2. In the bot: `/connect ntn_...` (then delete that message from the chat).
