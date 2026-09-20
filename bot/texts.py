@@ -1,36 +1,36 @@
-"""Готовые тексты. Весь интерфейс на русском и без markdown-разметки."""
+"""Static texts. The whole interface is plain text without markdown markup."""
 
-WELCOME = """👋 Привет! Я твой личный финансовый ассистент.
+WELCOME = """👋 Hi! I am your personal finance assistant.
 
-Я записываю твои расходы и доходы в твой собственный Notion и показываю, куда уходят деньги.
+I save your expenses and incomes into your own Notion workspace and show where the money goes.
 
-Чтобы начать, нужно два шага:
+Two steps to get started:
 
-1️⃣ Создай интеграцию Notion на notion.so/my-integrations и скопируй секрет (начинается на ntn_).
-Отправь мне: /connect ntn_твой_токен
+1️⃣ Create a Notion integration at notion.so/my-integrations and copy the secret (it starts with ntn_).
+Send me: /connect ntn_your_token
 
-2️⃣ Создай в Notion пустую страницу, открой «…» → Connections → выбери свою интеграцию.
-Потом отправь мне: /setup ссылка_на_страницу
+2️⃣ Create an empty page in Notion, open the "..." menu, choose Connections and pick your integration.
+Then send me: /setup page_link
 
-Я сам создам там базы Расходы, Доходы, Счета и Категории."""
+I will create the Expenses, Incomes, Accounts and Categories databases there myself."""
 
-HELP = """❓ Что я умею
+HELP = """❓ What I can do
 
-• «потратил 3500 на продукты с Каспи» — запишу расход и спишу со счёта
-• «пришла зарплата 400000 на Каспи» — запишу доход
-• «добавь счёт Наличные с балансом 20000»
-• «сколько я потратил в этом месяце»
-• «поменяй категорию у такси на Транспорт»
-• «где мне сэкономить»
+• "spent 3500 on groceries with Kaspi" — I save the expense and subtract it from the account
+• "got my salary 400000 to Kaspi" — I save the income
+• "add an account Cash with balance 20000"
+• "how much did I spend this month"
+• "change the category of the taxi record to Transport"
+• "where can I save money"
 
-Команды:
-• /connect — подключить свой Notion
-• /setup — создать базы по шаблону
-• /status — что подключено
-• /trace — мои последние действия
-• /forget — очистить контекст диалога
-• /disconnect — удалить мой профиль"""
+Commands:
+• /connect — connect your Notion
+• /setup — create the databases from the template
+• /status — what is connected
+• /trace — my latest actions
+• /forget — clear the conversation context
+• /disconnect — delete my profile"""
 
-NEED_CONNECT = "🔑 Сначала подключи Notion: /connect ntn_твой_токен"
-NEED_SETUP = "📚 Остался шаг: /setup ссылка_на_страницу_Notion"
-NOT_ALLOWED = "⛔ Этот бот закрыт. Попроси владельца добавить твой ID в ALLOWED_USER_IDS."
+NEED_CONNECT = "🔑 Connect Notion first: /connect ntn_your_token"
+NEED_SETUP = "📚 One step left: /setup notion_page_link"
+NOT_ALLOWED = "⛔ This bot is private. Ask the owner to add your ID to ALLOWED_USER_IDS."

@@ -1,7 +1,7 @@
-"""Ядро агента: цикл «модель → инструмент → модель».
+"""Agent core: the model → tool → model loop.
 
-Это то самое место, где живёт «принятие решения» системы: какой инструмент вызвать,
-с какими аргументами и когда остановиться. Глубина цикла ограничена жёстко.
+This is where the decision-making of the system lives: which tool to call, with which
+arguments, and when to stop. The depth of the loop is hard-limited.
 """
 
 import json
@@ -15,29 +15,30 @@ from core.tool_log import tool_log
 from core.tools import TOOLS_SCHEMA, FinanceTools, today_for
 from core.users import UserProfile
 
-SYSTEM_PROMPT = """Ты — личный финансовый ассистент в Telegram. Общаешься по-русски, коротко и по делу.
+SYSTEM_PROMPT = """You are a personal finance assistant inside Telegram. Answer briefly and to the point.
+Always reply in the same language the user writes in.
 
-Данные пользователя:
-- Сегодня: {today}
-- Валюта: {currency}
-- Часовой пояс: {timezone}
+User context:
+- Today: {today}
+- Currency: {currency}
+- Time zone: {timezone}
 
-Правила работы:
-1. Любое действие с данными делай только через инструменты. Без вызова инструмента ничего не сохранено.
-2. Запрещено говорить «записал», если инструмент вернул ok=false. В этом случае скажи прямо, что не получилось, и почему.
-3. Не выдумывай суммы и балансы. Цифры бери только из ответов инструментов.
-4. Если не знаешь точного названия счёта или категории — сначала вызови list_accounts или list_categories.
-5. Если пользователь не назвал категорию — подбери ближайшую по смыслу из существующих, не переспрашивай по мелочам.
-6. Формат ответа — простой текст для Telegram: без markdown-заголовков (#), без таблиц, без звёздочек. Используй эмодзи и точки «•».
-7. Суммы пиши с разделителем тысяч и валютой, например 12 500 {currency}.
-8. Если просят совет — сначала посмотри реальные цифры через summary, потом давай совет."""
+Rules:
+1. Any change to data must go through a tool. Without a tool call nothing is saved.
+2. Never say that something was saved if the tool returned ok=false. Say plainly that it failed and why.
+3. Never invent amounts or balances. Use only numbers returned by tools.
+4. If you do not know the exact account or category name, call list_accounts or list_categories first.
+5. If the user did not name a category, pick the closest existing one instead of asking about small details.
+6. Reply in plain text for Telegram: no markdown headings (#), no tables, no asterisks. Use emoji and bullet dots.
+7. Write amounts with a thousands separator and the currency, for example 12 500 {currency}.
+8. If asked for advice, first look at the real numbers with summary, then give the advice."""
 
 
 class Agent:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    # ───── вызов модели ─────
+    # ───── model call ─────
 
     def _chat(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         url = f"{self.settings.llm_base_url}/chat/completions"
@@ -56,13 +57,13 @@ class Agent:
             response = requests.post(url, headers=headers, json=payload,
                                      timeout=self.settings.llm_timeout)
         except Exception as exc:
-            return {"error": f"Модель недоступна: {exc}"}
+            return {"error": f"Model unavailable: {exc}"}
         if response.status_code >= 400:
-            return {"error": f"Модель вернула {response.status_code}: {response.text[:300]}"}
+            return {"error": f"Model returned {response.status_code}: {response.text[:300]}"}
         try:
             return response.json()
         except Exception:
-            return {"error": "Модель вернула не JSON"}
+            return {"error": "Model returned a non-JSON body"}
 
     def _system_message(self, profile: UserProfile) -> Dict[str, str]:
         return {
@@ -74,11 +75,11 @@ class Agent:
             ),
         }
 
-    # ───── основной цикл ─────
+    # ───── main loop ─────
 
     def respond(self, profile: UserProfile, history: List[Dict[str, Any]],
                 user_text: str) -> Tuple[str, List[str]]:
-        """Возвращает (ответ, список вызванных инструментов)."""
+        """Returns (reply, list of tools that were called)."""
         tools = FinanceTools(profile)
         messages: List[Dict[str, Any]] = [self._system_message(profile)]
         messages.extend(history)
@@ -93,13 +94,13 @@ class Agent:
 
             choices = data.get("choices") or []
             if not choices:
-                return "⚠️ Модель вернула пустой ответ.", used_tools
+                return "⚠️ The model returned an empty response.", used_tools
 
             message = choices[0].get("message", {})
             tool_calls = message.get("tool_calls") or []
 
             if not tool_calls:
-                return (message.get("content") or "Не понял запрос.").strip(), used_tools
+                return (message.get("content") or "I did not understand the request.").strip(), used_tools
 
             messages.append({
                 "role": "assistant",
@@ -129,5 +130,5 @@ class Agent:
                     "content": json.dumps(result, ensure_ascii=False),
                 })
 
-        return ("⚠️ Слишком много шагов подряд, остановился. "
-                "Сформулируй запрос короче."), used_tools
+        return ("⚠️ Too many steps in a row, I stopped. "
+                "Please rephrase the request more simply."), used_tools

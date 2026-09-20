@@ -1,12 +1,12 @@
-"""Финансовые инструменты агента.
+"""Financial tools of the agent.
 
-Только финансы: расходы, доходы, счета, категории, отчёты.
-Каждый инструмент возвращает структуру с полем ok, чтобы модель не могла выдать
-неудачу за успех.
+Finance only: expenses, incomes, accounts, categories, reports.
+Every tool returns a structure with an `ok` field so the model cannot present a
+failure as a success.
 """
 
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core import notion_client as nc
 from core.notion_client import NotionClient
@@ -17,6 +17,8 @@ from core.workspace import (
     DB_EXPENSES,
     DB_INCOMES,
     FIELDS,
+    KIND_EXPENSE,
+    KIND_INCOME,
 )
 
 try:
@@ -34,8 +36,8 @@ def today_for(profile: UserProfile) -> date:
     return datetime.now().date()
 
 
-def period_range(profile: UserProfile, period: str) -> (str, str):
-    """Возвращает (начало, конец) в формате YYYY-MM-DD."""
+def period_range(profile: UserProfile, period: str) -> Tuple[str, str]:
+    """Returns (start, end) as YYYY-MM-DD strings."""
     today = today_for(profile)
     period = (period or "month").lower()
     if period == "today":
@@ -56,13 +58,13 @@ def period_range(profile: UserProfile, period: str) -> (str, str):
 
 
 class FinanceTools:
-    """Обёртка над Notion для одного конкретного пользователя."""
+    """A Notion wrapper bound to one specific user."""
 
     def __init__(self, profile: UserProfile):
         self.profile = profile
         self.client = NotionClient(profile.notion_token)
 
-    # ───── служебное ─────
+    # ───── helpers ─────
 
     def _db(self, key: str) -> str:
         return self.profile.databases.get(key, "")
@@ -100,11 +102,11 @@ class FinanceTools:
     def _category_name(self, row: Dict[str, Any]) -> str:
         ids = nc.read_relation_ids(row, FIELDS[DB_EXPENSES]["category"])
         if not ids:
-            return "Без категории"
+            return "Uncategorized"
         page = self.client.retrieve_page(ids[0])
         if page.get("error"):
-            return "Без категории"
-        return nc.read_title(page, FIELDS[DB_CATEGORIES]["title"]) or "Без категории"
+            return "Uncategorized"
+        return nc.read_title(page, FIELDS[DB_CATEGORIES]["title"]) or "Uncategorized"
 
     def _adjust_balance(self, account_row: Dict[str, Any], delta: float) -> Optional[float]:
         field = FIELDS[DB_ACCOUNTS]["balance"]
@@ -113,7 +115,7 @@ class FinanceTools:
         result = self.client.update_row(account_row["id"], {field: nc.number_value(new_value)})
         return None if result.get("error") else new_value
 
-    # ───── инструменты ─────
+    # ───── tools ─────
 
     def add_account(self, name: str, balance: float = 0.0, currency: str = "") -> Dict[str, Any]:
         fields = FIELDS[DB_ACCOUNTS]
@@ -124,13 +126,13 @@ class FinanceTools:
         }
         result = self.client.create_row(self._db(DB_ACCOUNTS), payload)
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось создать счёт"))
+            return self._fail(result.get("message", "Could not create the account"))
         return {"ok": True, "account": name, "balance": balance}
 
     def list_accounts(self) -> Dict[str, Any]:
         result = self.client.query_database(self._db(DB_ACCOUNTS), page_size=50)
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось прочитать счета"))
+            return self._fail(result.get("message", "Could not read accounts"))
         fields = FIELDS[DB_ACCOUNTS]
         accounts = [
             {
@@ -145,7 +147,7 @@ class FinanceTools:
     def list_categories(self, kind: str = "") -> Dict[str, Any]:
         result = self.client.query_database(self._db(DB_CATEGORIES), page_size=100)
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось прочитать категории"))
+            return self._fail(result.get("message", "Could not read categories"))
         fields = FIELDS[DB_CATEGORIES]
         items = []
         for row in result.get("results", []):
@@ -155,14 +157,14 @@ class FinanceTools:
             items.append({"name": nc.read_title(row, fields["title"]), "kind": row_kind})
         return {"ok": True, "categories": items}
 
-    def add_category(self, name: str, kind: str = "расход") -> Dict[str, Any]:
+    def add_category(self, name: str, kind: str = KIND_EXPENSE) -> Dict[str, Any]:
         fields = FIELDS[DB_CATEGORIES]
         result = self.client.create_row(self._db(DB_CATEGORIES), {
             fields["title"]: nc.title_value(name),
-            fields["kind"]: nc.select_value(kind if kind in ("расход", "доход") else "расход"),
+            fields["kind"]: nc.select_value(kind if kind in (KIND_EXPENSE, KIND_INCOME) else KIND_EXPENSE),
         })
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось создать категорию"))
+            return self._fail(result.get("message", "Could not create the category"))
         return {"ok": True, "category": name, "kind": kind}
 
     def add_expense(self, amount: float, title: str, category: str = "", account: str = "",
@@ -170,7 +172,7 @@ class FinanceTools:
         fields = FIELDS[DB_EXPENSES]
         when = when or today_for(self.profile).isoformat()
         payload: Dict[str, Any] = {
-            fields["title"]: nc.title_value(title or "Расход"),
+            fields["title"]: nc.title_value(title or "Expense"),
             fields["amount"]: nc.number_value(amount),
             fields["date"]: nc.date_value(when),
             fields["notes"]: nc.text_value(notes),
@@ -182,7 +184,7 @@ class FinanceTools:
             if row:
                 payload[fields["category"]] = nc.relation_value(row["id"])
             else:
-                warnings.append(f"Категория '{category}' не найдена, запись без категории")
+                warnings.append(f"Category '{category}' not found, saved without a category")
 
         account_row = None
         if account:
@@ -190,17 +192,17 @@ class FinanceTools:
             if account_row:
                 payload[fields["account"]] = nc.relation_value(account_row["id"])
             else:
-                warnings.append(f"Счёт '{account}' не найден, баланс не изменён")
+                warnings.append(f"Account '{account}' not found, balance unchanged")
 
         result = self.client.create_row(self._db(DB_EXPENSES), payload)
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось записать расход"))
+            return self._fail(result.get("message", "Could not save the expense"))
 
         new_balance = None
         if account_row:
             new_balance = self._adjust_balance(account_row, -abs(float(amount)))
             if new_balance is None:
-                warnings.append("Запись создана, но баланс счёта обновить не удалось")
+                warnings.append("Row created, but the account balance could not be updated")
 
         return {
             "ok": True,
@@ -215,7 +217,7 @@ class FinanceTools:
         fields = FIELDS[DB_INCOMES]
         when = when or today_for(self.profile).isoformat()
         payload: Dict[str, Any] = {
-            fields["title"]: nc.title_value(source or "Доход"),
+            fields["title"]: nc.title_value(source or "Income"),
             fields["amount"]: nc.number_value(amount),
             fields["date"]: nc.date_value(when),
             fields["notes"]: nc.text_value(notes),
@@ -228,17 +230,17 @@ class FinanceTools:
             if account_row:
                 payload[fields["account"]] = nc.relation_value(account_row["id"])
             else:
-                warnings.append(f"Счёт '{account}' не найден, баланс не изменён")
+                warnings.append(f"Account '{account}' not found, balance unchanged")
 
         result = self.client.create_row(self._db(DB_INCOMES), payload)
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось записать доход"))
+            return self._fail(result.get("message", "Could not save the income"))
 
         new_balance = None
         if account_row:
             new_balance = self._adjust_balance(account_row, abs(float(amount)))
             if new_balance is None:
-                warnings.append("Запись создана, но баланс счёта обновить не удалось")
+                warnings.append("Row created, but the account balance could not be updated")
 
         return {
             "ok": True,
@@ -305,7 +307,7 @@ class FinanceTools:
         fields = FIELDS[db_key]
         row = self._find_row(db_key, name)
         if not row:
-            return self._fail(f"Запись '{name}' не найдена")
+            return self._fail(f"Record '{name}' not found")
 
         updates: Dict[str, Any] = {}
         if new_amount is not None:
@@ -319,28 +321,28 @@ class FinanceTools:
         if new_category and db_key == DB_EXPENSES:
             category_row = self._find_row(DB_CATEGORIES, new_category)
             if not category_row:
-                return self._fail(f"Категория '{new_category}' не найдена")
+                return self._fail(f"Category '{new_category}' not found")
             updates[fields["category"]] = nc.relation_value(category_row["id"])
 
         if not updates:
-            return self._fail("Не указано, что именно менять")
+            return self._fail("Nothing to change was specified")
 
         result = self.client.update_row(row["id"], updates)
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось обновить запись"))
+            return self._fail(result.get("message", "Could not update the record"))
         return {"ok": True, "updated": nc.read_title(row, fields["title"]), "changes": list(updates.keys())}
 
     def delete_transaction(self, name: str, kind: str = "expenses") -> Dict[str, Any]:
         db_key = DB_INCOMES if kind == "incomes" else DB_EXPENSES
         row = self._find_row(db_key, name)
         if not row:
-            return self._fail(f"Запись '{name}' не найдена")
+            return self._fail(f"Record '{name}' not found")
         result = self.client.archive_row(row["id"])
         if result.get("error"):
-            return self._fail(result.get("message", "Не удалось удалить запись"))
+            return self._fail(result.get("message", "Could not delete the record"))
         return {"ok": True, "deleted": name}
 
-    # ───── диспетчер ─────
+    # ───── dispatcher ─────
 
     def call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         handlers = {
@@ -357,31 +359,32 @@ class FinanceTools:
         }
         handler = handlers.get(tool_name)
         if handler is None:
-            return self._fail(f"Неизвестный инструмент: {tool_name}")
+            return self._fail(f"Unknown tool: {tool_name}")
         try:
             return handler(**arguments)
         except TypeError as exc:
-            return self._fail(f"Неверные аргументы для {tool_name}: {exc}")
-        except Exception as exc:  # ни одна ошибка не должна ронять бота
-            return self._fail(f"Сбой инструмента {tool_name}: {exc}")
+            return self._fail(f"Invalid arguments for {tool_name}: {exc}")
+        except Exception as exc:  # no tool error may ever crash the bot
+            return self._fail(f"Tool {tool_name} failed: {exc}")
 
 
 PERIOD_ENUM = ["today", "yesterday", "week", "month", "prev_month", "year"]
+KIND_ENUM = [KIND_EXPENSE, KIND_INCOME]
 
 TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
             "name": "add_expense",
-            "description": "Записать расход и списать сумму со счёта, если счёт указан.",
+            "description": "Save an expense and subtract the amount from an account if one is given.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "amount": {"type": "number", "description": "Сумма расхода"},
-                    "title": {"type": "string", "description": "На что потрачено"},
-                    "category": {"type": "string", "description": "Название категории из базы"},
-                    "account": {"type": "string", "description": "Название счёта"},
-                    "when": {"type": "string", "description": "Дата YYYY-MM-DD, по умолчанию сегодня"},
+                    "amount": {"type": "number", "description": "Expense amount"},
+                    "title": {"type": "string", "description": "What the money was spent on"},
+                    "category": {"type": "string", "description": "Category name from the database"},
+                    "account": {"type": "string", "description": "Account name"},
+                    "when": {"type": "string", "description": "Date YYYY-MM-DD, defaults to today"},
                     "notes": {"type": "string"},
                 },
                 "required": ["amount", "title"],
@@ -392,14 +395,14 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "add_income",
-            "description": "Записать доход и пополнить счёт, если счёт указан.",
+            "description": "Save an income and top up an account if one is given.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "amount": {"type": "number"},
-                    "source": {"type": "string", "description": "Источник дохода"},
+                    "source": {"type": "string", "description": "Income source"},
                     "account": {"type": "string"},
-                    "when": {"type": "string", "description": "Дата YYYY-MM-DD"},
+                    "when": {"type": "string", "description": "Date YYYY-MM-DD"},
                     "notes": {"type": "string"},
                 },
                 "required": ["amount", "source"],
@@ -410,7 +413,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "add_account",
-            "description": "Создать счёт (карта, наличные, депозит) с начальным балансом.",
+            "description": "Create an account (card, cash, deposit) with a starting balance.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -426,12 +429,12 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "add_category",
-            "description": "Добавить новую категорию расходов или доходов.",
+            "description": "Add a new expense or income category.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "kind": {"type": "string", "enum": ["расход", "доход"]},
+                    "kind": {"type": "string", "enum": KIND_ENUM},
                 },
                 "required": ["name"],
             },
@@ -441,7 +444,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_accounts",
-            "description": "Показать счета и их балансы. Вызывай перед тем, как угадывать название счёта.",
+            "description": "Show accounts and balances. Call it before guessing an account name.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -449,10 +452,10 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_categories",
-            "description": "Показать доступные категории.",
+            "description": "Show the available categories.",
             "parameters": {
                 "type": "object",
-                "properties": {"kind": {"type": "string", "enum": ["расход", "доход"]}},
+                "properties": {"kind": {"type": "string", "enum": KIND_ENUM}},
             },
         },
     },
@@ -460,7 +463,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_transactions",
-            "description": "Список операций за период.",
+            "description": "List transactions for a period.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -475,7 +478,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "summary",
-            "description": "Сводка за период: сумма расходов, доходов, баланс и топ категорий.",
+            "description": "Period summary: total spent, total earned, net and top categories.",
             "parameters": {
                 "type": "object",
                 "properties": {"period": {"type": "string", "enum": PERIOD_ENUM}},
@@ -486,11 +489,11 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "update_transaction",
-            "description": "Изменить существующую запись, найденную по названию.",
+            "description": "Update an existing record found by name.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Часть названия записи"},
+                    "name": {"type": "string", "description": "Part of the record name"},
                     "kind": {"type": "string", "enum": ["expenses", "incomes"]},
                     "new_amount": {"type": "number"},
                     "new_category": {"type": "string"},
@@ -506,7 +509,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "delete_transaction",
-            "description": "Удалить (архивировать) запись по названию.",
+            "description": "Delete (archive) a record by name.",
             "parameters": {
                 "type": "object",
                 "properties": {

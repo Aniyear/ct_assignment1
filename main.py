@@ -1,8 +1,8 @@
-"""Точка входа.
+"""Entry point.
 
-Запускает две вещи параллельно:
-1. Telegram-бота (long polling)
-2. Маленький HTTP-сервер для health-check — без него Render считает сервис упавшим.
+Runs two things in parallel:
+1. The Telegram bot (long polling)
+2. A tiny HTTP server for health checks, without which Render treats the service as down.
 """
 
 import asyncio
@@ -37,16 +37,16 @@ async def run_web(store: UserStore) -> None:
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", settings.port)
     await site.start()
-    logging.info("HTTP health-check на порту %s", settings.port)
+    logging.info("HTTP health check on port %s", settings.port)
 
 
 async def main() -> None:
     gaps = settings.missing()
     if gaps:
         raise SystemExit(
-            "Не заполнены обязательные переменные окружения: "
+            "Required environment variables are missing: "
             + ", ".join(gaps)
-            + ". Скопируй .env.example в .env и заполни их."
+            + ". Copy .env.example to .env and fill them in."
         )
 
     store = UserStore(settings.users_file)
@@ -58,7 +58,7 @@ async def main() -> None:
     dispatcher.include_router(build_router(settings, store, agent, memory))
 
     await run_web(store)
-    logging.info("Бот запущен. Профилей в базе: %s", store.count())
+    logging.info("Bot started. Stored profiles: %s", store.count())
     await bot.delete_webhook(drop_pending_updates=True)
     await dispatcher.start_polling(bot)
 
@@ -67,4 +67,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit) as exc:
-        logging.info("Остановка: %s", exc)
+        logging.info("Shutting down: %s", exc)

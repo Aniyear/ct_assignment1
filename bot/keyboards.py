@@ -1,21 +1,21 @@
-"""Клавиатура бота. Кнопки — это готовые запросы к тому же агенту."""
+"""Bot keyboard. Buttons are pre-written prompts sent to the same agent."""
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-BTN_TODAY = "📊 Сегодня"
-BTN_WEEK = "📅 Неделя"
-BTN_MONTH = "🗓 Месяц"
-BTN_ACCOUNTS = "🏦 Балансы"
-BTN_CATEGORIES = "🏷 Категории"
-BTN_ADVICE = "💡 Совет"
+BTN_TODAY = "📊 Today"
+BTN_WEEK = "📅 Week"
+BTN_MONTH = "🗓 Month"
+BTN_ACCOUNTS = "🏦 Balances"
+BTN_CATEGORIES = "🏷 Categories"
+BTN_ADVICE = "💡 Advice"
 
 BUTTON_PROMPTS = {
-    BTN_TODAY: "Покажи сводку за сегодня",
-    BTN_WEEK: "Покажи сводку за эту неделю",
-    BTN_MONTH: "Покажи сводку за этот месяц с разбивкой по категориям",
-    BTN_ACCOUNTS: "Покажи мои счета и балансы",
-    BTN_CATEGORIES: "Покажи список категорий",
-    BTN_ADVICE: "Посмотри мои траты за месяц и дай один конкретный совет, где можно сэкономить",
+    BTN_TODAY: "Show the summary for today",
+    BTN_WEEK: "Show the summary for this week",
+    BTN_MONTH: "Show the summary for this month with a breakdown by category",
+    BTN_ACCOUNTS: "Show my accounts and balances",
+    BTN_CATEGORIES: "Show the list of categories",
+    BTN_ADVICE: "Look at my spending this month and give one concrete tip on where I can save",
 }
 
 

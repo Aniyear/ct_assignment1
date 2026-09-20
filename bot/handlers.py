@@ -1,7 +1,7 @@
-"""Обработчики Telegram.
+"""Telegram handlers.
 
-Порядок регистрации важен: сначала команды, потом кнопки, и только в конце
-универсальный текстовый обработчик, иначе он «съест» всё остальное.
+Registration order matters: commands first, buttons next, and the catch-all text
+handler last, otherwise it would swallow everything else.
 """
 
 import asyncio
@@ -32,10 +32,10 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
     async def guard(message: Message) -> bool:
         if settings.user_allowed(message.from_user.id):
             return True
-        await message.answer(f"{NOT_ALLOWED}\nТвой ID: {message.from_user.id}")
+        await message.answer(f"{NOT_ALLOWED}\nYour ID: {message.from_user.id}")
         return False
 
-    # ───── команды ─────
+    # ───── commands ─────
 
     @router.message(CommandStart())
     async def cmd_start(message: Message):
@@ -44,7 +44,7 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         profile = profile_for(message)
         if profile.ready:
             await message.answer(
-                "👋 С возвращением! Всё подключено, можно сразу писать траты.",
+                "👋 Welcome back! Everything is connected, you can start writing your expenses.",
                 reply_markup=main_keyboard(),
             )
         else:
@@ -62,16 +62,16 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
             return
         parts = (message.text or "").split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
-            await message.answer("Формат: /connect ntn_твой_токен")
+            await message.answer("Format: /connect ntn_your_token")
             return
 
         token = parts[1].strip()
         check = await asyncio.to_thread(NotionClient(token).whoami)
         if check.get("error"):
             await message.answer(
-                "❌ Токен не подошёл.\n"
-                f"Notion ответил: {check.get('message')}\n\n"
-                "Проверь, что скопирован Internal Integration Secret целиком."
+                "❌ The token was rejected.\n"
+                f"Notion said: {check.get('message')}\n\n"
+                "Check that you copied the whole Internal Integration Secret."
             )
             return
 
@@ -79,11 +79,11 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         profile.notion_token = token
         store.save(profile)
 
-        bot_name = (check.get("name") or "интеграция")
+        bot_name = (check.get("name") or "integration")
         await message.answer(
-            f"✅ Notion подключён ({bot_name}).\n"
-            "⚠️ Удали сообщение с токеном из чата.\n\n"
-            "Теперь: /setup ссылка_на_страницу_Notion"
+            f"✅ Notion connected ({bot_name}).\n"
+            "⚠️ Delete the message containing the token from this chat.\n\n"
+            "Next: /setup notion_page_link"
         )
 
     @router.message(Command("setup"))
@@ -97,7 +97,7 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
 
         parts = (message.text or "").split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
-            await message.answer("Формат: /setup ссылка_на_страницу_Notion")
+            await message.answer("Format: /setup notion_page_link")
             return
 
         page_id = normalize_id(parts[1].strip())
@@ -106,13 +106,13 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         check = await asyncio.to_thread(client.retrieve_page, page_id)
         if check.get("error"):
             await message.answer(
-                "❌ Не вижу эту страницу.\n"
-                f"Notion ответил: {check.get('message')}\n\n"
-                "Скорее всего не выдан доступ: открой страницу → «…» → Connections → выбери свою интеграцию."
+                "❌ I cannot see that page.\n"
+                f"Notion said: {check.get('message')}\n\n"
+                "Most likely access was not granted: open the page, click \"...\", choose Connections and pick your integration."
             )
             return
 
-        await message.answer("⏳ Создаю базы, это займёт около минуты…")
+        await message.answer("⏳ Creating the databases, this takes about a minute...")
         databases, problems = await asyncio.to_thread(setup_workspace, client, page_id)
 
         profile.page_id = page_id
@@ -120,11 +120,11 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         store.save(profile)
 
         created = "\n".join(f"• {TITLES[key][1]} {TITLES[key][0]}" for key in databases)
-        text = f"✅ Готово. Создано баз: {len(databases)}\n{created}"
+        text = f"✅ Done. Databases created: {len(databases)}\n{created}"
         if problems:
-            text += "\n\n⚠️ Были проблемы:\n" + "\n".join(f"• {item}" for item in problems[:5])
+            text += "\n\n⚠️ Some problems occurred:\n" + "\n".join(f"• {item}" for item in problems[:5])
         if profile.ready:
-            text += "\n\nПопробуй: «добавь счёт Карта с балансом 100000»"
+            text += "\n\nTry: \"add an account Card with balance 100000\""
         await message.answer(text, reply_markup=main_keyboard())
 
     @router.message(Command("status"))
@@ -134,20 +134,20 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         profile = profile_for(message)
         stats = tool_log.stats(profile.user_id)
         lines = [
-            "🧠 Состояние агента",
+            "🧠 Agent status",
             "",
-            f"• Notion: {'подключён ' + profile.masked_token() if profile.connected else 'не подключён'}",
-            f"• Баз настроено: {len(profile.databases)} из 4",
-            f"• Валюта: {profile.currency}, пояс: {profile.timezone}",
-            f"• Память диалога: {memory.size(profile.user_id)} реплик",
-            f"• Модель: {settings.llm_model}",
+            f"• Notion: {'connected ' + profile.masked_token() if profile.connected else 'not connected'}",
+            f"• Databases configured: {len(profile.databases)} of 4",
+            f"• Currency: {profile.currency}, time zone: {profile.timezone}",
+            f"• Conversation memory: {memory.size(profile.user_id)} turns",
+            f"• Model: {settings.llm_model}",
             "",
-            f"• Вызовов инструментов: {stats['calls']}, из них ошибок: {stats['errors']}",
-            f"• Среднее время инструмента: {stats['avg_ms']} мс",
+            f"• Tool calls: {stats['calls']}, of them failed: {stats['errors']}",
+            f"• Average tool time: {stats['avg_ms']} ms",
         ]
         if stats["top"]:
             top = ", ".join(f"{name} ({count})" for name, count in stats["top"])
-            lines.append(f"• Чаще всего: {top}")
+            lines.append(f"• Most used: {top}")
         if not profile.connected:
             lines += ["", NEED_CONNECT]
         elif not profile.ready:
@@ -160,12 +160,12 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
             return
         entries = tool_log.recent(message.from_user.id, limit=10)
         if not entries:
-            await message.answer("📜 Пока ни одного вызова инструментов.")
+            await message.answer("📜 No tool calls yet.")
             return
-        lines = ["📜 Последние действия", ""]
+        lines = ["📜 Latest actions", ""]
         for entry in entries:
             mark = "✅" if entry["ok"] else "❌"
-            lines.append(f"{mark} {entry['time']} • {entry['tool']} • {entry['duration_ms']} мс")
+            lines.append(f"{mark} {entry['time']} • {entry['tool']} • {entry['duration_ms']} ms")
         await message.answer("\n".join(lines))
 
     @router.message(Command("forget"))
@@ -173,7 +173,7 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         if not await guard(message):
             return
         memory.clear(message.from_user.id)
-        await message.answer("🧹 Контекст диалога очищен. Данные в Notion не тронуты.")
+        await message.answer("🧹 Conversation context cleared. Your Notion data is untouched.")
 
     @router.message(Command("disconnect"))
     async def cmd_disconnect(message: Message):
@@ -182,11 +182,11 @@ def build_router(settings, store: UserStore, agent: Agent, memory: ConversationM
         memory.clear(message.from_user.id)
         removed = store.delete(message.from_user.id)
         await message.answer(
-            "🗑 Профиль удалён, токен больше не хранится. Базы в Notion остались на месте."
-            if removed else "Профиля и так не было."
+            "🗑 Profile deleted, the token is no longer stored. The Notion databases stay where they are."
+            if removed else "There was no profile to delete."
         )
 
-    # ───── свободный текст и кнопки ─────
+    # ───── free text and buttons ─────
 
     @router.message(F.text)
     async def on_text(message: Message):
