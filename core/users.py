@@ -1,10 +1,11 @@
-"""Профили пользователей.
+"""User profiles.
 
-Именно этот модуль делает бота многопользовательским: у каждого свой токен Notion
-и свои ID баз. В персональной версии эти значения были зашиты в переменные окружения.
+This module is what makes the bot multi-tenant: every user has their own Notion token
+and their own database ids. In a personal single-user bot these values were hard-coded
+in environment variables.
 
-Хранилище — JSON-файл. Простое и прозрачное для учебного проекта. На эфемерном
-диске (Render) укажи USERS_FILE на подключённый Disk, иначе профили струтся при деплое.
+Storage is a JSON file: simple and transparent for an academic project. On an ephemeral
+disk (Render) point USERS_FILE at a mounted Disk, otherwise profiles are wiped on deploy.
 """
 
 import json
@@ -21,7 +22,7 @@ class UserProfile:
     notion_token: str = ""
     page_id: str = ""
     databases: Dict[str, str] = field(default_factory=dict)
-    currency: str = "₸"
+    currency: str = "KZT"
     timezone: str = "Asia/Almaty"
     created_at: str = ""
 
@@ -31,13 +32,13 @@ class UserProfile:
 
     @property
     def ready(self) -> bool:
-        """Готов к работе только если есть и токен, и все четыре базы."""
+        """Ready only when both the token and all four databases are present."""
         needed = ("expenses", "incomes", "accounts", "categories")
         return self.connected and all(self.databases.get(key) for key in needed)
 
     def masked_token(self) -> str:
         if not self.notion_token:
-            return "не задан"
+            return "not set"
         return f"{self.notion_token[:7]}…{self.notion_token[-4:]}"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,7 +51,7 @@ class UserProfile:
             notion_token=data.get("notion_token", ""),
             page_id=data.get("page_id", ""),
             databases=dict(data.get("databases", {})),
-            currency=data.get("currency", "₸"),
+            currency=data.get("currency", "KZT"),
             timezone=data.get("timezone", "Asia/Almaty"),
             created_at=data.get("created_at", ""),
         )
@@ -72,9 +73,9 @@ class UserStore:
             self._cache = {
                 str(key): UserProfile.from_dict(value) for key, value in raw.items()
             }
-            print(f"[UserStore] Загружено профилей: {len(self._cache)}")
+            print(f"[UserStore] Profiles loaded: {len(self._cache)}")
         except Exception as exc:
-            print(f"[UserStore] Не удалось прочитать {self.path}: {exc}")
+            print(f"[UserStore] Could not read {self.path}: {exc}")
 
     def _flush(self) -> None:
         directory = os.path.dirname(self.path)

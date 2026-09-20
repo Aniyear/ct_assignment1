@@ -1,10 +1,10 @@
-"""Шаблон рабочего пространства Notion.
+"""Notion workspace template.
 
-Команда /setup создаёт четыре базы на странице пользователя. Пользователю не нужно
-знать ни схему, ни ID — он даёт только ссылку на пустую страницу.
+The /setup command creates four databases on the user's page. The user does not need
+to know the schema or any IDs: they only provide a link to an empty page.
 
-Порядок важен: сначала Счета и Категории, потом Расходы и Доходы — им нужны
-готовые database_id для relation-связей.
+Order matters: Accounts and Categories first, then Expenses and Incomes, because the
+latter need existing database ids for their relation properties.
 """
 
 from typing import Any, Dict, List, Tuple
@@ -16,56 +16,59 @@ DB_INCOMES = "incomes"
 DB_ACCOUNTS = "accounts"
 DB_CATEGORIES = "categories"
 
+KIND_EXPENSE = "expense"
+KIND_INCOME = "income"
+
 TITLES = {
-    DB_EXPENSES: ("Финансы — Расходы", "💸"),
-    DB_INCOMES: ("Финансы — Доходы", "💰"),
-    DB_ACCOUNTS: ("Финансы — Счета", "🏦"),
-    DB_CATEGORIES: ("Финансы — Категории", "🏷"),
+    DB_EXPENSES: ("Finance — Expenses", "💸"),
+    DB_INCOMES: ("Finance — Incomes", "💰"),
+    DB_ACCOUNTS: ("Finance — Accounts", "🏦"),
+    DB_CATEGORIES: ("Finance — Categories", "🏷"),
 }
 
-# Имена свойств в одном месте: если захочешь переименовать колонки — правь только здесь.
+# Property names in a single place: rename columns here only.
 FIELDS = {
     DB_EXPENSES: {
-        "title": "Название",
-        "amount": "Сумма",
-        "date": "Дата",
-        "notes": "Заметки",
-        "category": "Категория",
-        "account": "Счёт",
+        "title": "Name",
+        "amount": "Amount",
+        "date": "Date",
+        "notes": "Notes",
+        "category": "Category",
+        "account": "Account",
     },
     DB_INCOMES: {
-        "title": "Источник",
-        "amount": "Сумма",
-        "date": "Дата",
-        "notes": "Заметки",
-        "account": "Счёт",
+        "title": "Source",
+        "amount": "Amount",
+        "date": "Date",
+        "notes": "Notes",
+        "account": "Account",
     },
     DB_ACCOUNTS: {
-        "title": "Название",
-        "balance": "Баланс",
-        "currency": "Валюта",
+        "title": "Name",
+        "balance": "Balance",
+        "currency": "Currency",
     },
     DB_CATEGORIES: {
-        "title": "Название",
-        "kind": "Тип",
+        "title": "Name",
+        "kind": "Kind",
     },
 }
 
 DEFAULT_EXPENSE_CATEGORIES = [
-    "Продукты",
-    "Кафе и рестораны",
-    "Транспорт",
-    "Жильё и коммуналка",
-    "Связь и интернет",
-    "Здоровье",
-    "Одежда",
-    "Развлечения",
-    "Подписки",
-    "Образование",
-    "Прочее",
+    "Groceries",
+    "Cafes and restaurants",
+    "Transport",
+    "Housing and utilities",
+    "Mobile and internet",
+    "Health",
+    "Clothing",
+    "Entertainment",
+    "Subscriptions",
+    "Education",
+    "Other",
 ]
 
-DEFAULT_INCOME_CATEGORIES = ["Зарплата", "Подработка", "Подарок", "Прочее"]
+DEFAULT_INCOME_CATEGORIES = ["Salary", "Freelance", "Gift", "Other income"]
 
 
 def _accounts_schema() -> Dict[str, Any]:
@@ -84,8 +87,8 @@ def _categories_schema() -> Dict[str, Any]:
         f["kind"]: {
             "select": {
                 "options": [
-                    {"name": "расход", "color": "red"},
-                    {"name": "доход", "color": "green"},
+                    {"name": KIND_EXPENSE, "color": "red"},
+                    {"name": KIND_INCOME, "color": "green"},
                 ]
             }
         },
@@ -116,10 +119,10 @@ def _incomes_schema(accounts_db: str) -> Dict[str, Any]:
 
 
 def setup_workspace(client: NotionClient, parent_page_id: str) -> Tuple[Dict[str, str], List[str]]:
-    """Создаёт четыре базы и сеит категории.
+    """Creates the four databases and seeds default categories.
 
-    Возвращает (словарь ID баз, список ошибок). Частичный успех виден явно,
-    а не маскируется под успех.
+    Returns (database id map, list of problems). Partial success stays visible
+    instead of being masked as success.
     """
     databases: Dict[str, str] = {}
     problems: List[str] = []
@@ -153,7 +156,7 @@ def setup_workspace(client: NotionClient, parent_page_id: str) -> Tuple[Dict[str
         seeded, seed_problems = seed_categories(client, databases[DB_CATEGORIES])
         problems.extend(seed_problems)
         if seeded == 0 and not seed_problems:
-            problems.append("Категории по умолчанию не созданы")
+            problems.append("Default categories were not created")
 
     return databases, problems
 
@@ -162,8 +165,8 @@ def seed_categories(client: NotionClient, categories_db: str) -> Tuple[int, List
     f = FIELDS[DB_CATEGORIES]
     created = 0
     problems: List[str] = []
-    pairs = [(name, "расход") for name in DEFAULT_EXPENSE_CATEGORIES]
-    pairs += [(name, "доход") for name in DEFAULT_INCOME_CATEGORIES]
+    pairs = [(name, KIND_EXPENSE) for name in DEFAULT_EXPENSE_CATEGORIES]
+    pairs += [(name, KIND_INCOME) for name in DEFAULT_INCOME_CATEGORIES]
 
     for name, kind in pairs:
         result = client.create_row(categories_db, {
@@ -171,7 +174,7 @@ def seed_categories(client: NotionClient, categories_db: str) -> Tuple[int, List
             f["kind"]: select_value(kind),
         })
         if result.get("error"):
-            problems.append(f"Категория '{name}': {result.get('message')}")
+            problems.append(f"Category '{name}': {result.get('message')}")
         else:
             created += 1
     return created, problems

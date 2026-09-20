@@ -1,7 +1,7 @@
-"""Журнал вызовов инструментов.
+"""Tool call log.
 
-Нужен не для красоты: без него нельзя честно ответить на вопрос задания про
-self-evaluation — агент должен видеть свои собственные действия и их результат.
+Not cosmetic: without it we could not honestly answer the self-evaluation part of the
+assignment, because the agent must be able to observe its own actions and their outcome.
 """
 
 from collections import deque

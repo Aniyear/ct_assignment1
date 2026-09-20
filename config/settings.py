@@ -1,8 +1,8 @@
-"""Настройки сервиса.
+"""Service-level settings.
 
-Здесь только то, что относится к самому сервису: токен бота, ключ модели, порт.
-Данные конкретного пользователя (его токен Notion и ID его баз) СОЗНАТЕЛЬНО не здесь:
-они живут в core/users.py. Именно это делает бота многопользовательским.
+Only service-wide values live here: bot token, model key, port.
+Per-user data (their Notion token and their database IDs) is DELIBERATELY not here:
+it lives in core/users.py. That separation is what makes the bot multi-tenant.
 """
 
 import os
@@ -13,7 +13,7 @@ try:
     from dotenv import load_dotenv
 
     load_dotenv()
-except ImportError:  # в продакшене переменные могут быть уже в окружении
+except ImportError:  # in production the variables may already be in the environment
     pass
 
 
@@ -36,7 +36,7 @@ class Settings:
     max_tool_iterations: int = 6
     users_file: str = "data/users.json"
     allowed_user_ids: List[int] = field(default_factory=list)
-    default_currency: str = "₸"
+    default_currency: str = "KZT"
     timezone: str = "Asia/Almaty"
     port: int = 8080
 
@@ -51,13 +51,13 @@ class Settings:
             max_tool_iterations=int(os.getenv("MAX_TOOL_ITERATIONS", "6")),
             users_file=os.getenv("USERS_FILE", "data/users.json"),
             allowed_user_ids=_parse_ids(os.getenv("ALLOWED_USER_IDS", "")),
-            default_currency=os.getenv("DEFAULT_CURRENCY", "₸"),
+            default_currency=os.getenv("DEFAULT_CURRENCY", "KZT"),
             timezone=os.getenv("TIMEZONE", "Asia/Almaty"),
             port=int(os.getenv("PORT", "8080")),
         )
 
     def missing(self) -> List[str]:
-        """Чего не хватает для старта. Лучше сказать это сразу, чем упасть позже."""
+        """What is missing for a successful start. Better to say it now than crash later."""
         gaps = []
         if not self.telegram_bot_token:
             gaps.append("TELEGRAM_BOT_TOKEN")

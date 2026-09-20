@@ -1,10 +1,10 @@
-"""Тонкий клиент Notion API.
+"""Thin Notion API client.
 
-Отличие от персональной версии: клиент создаётся НА КАЖДОГО пользователя с его
-собственным токеном, а не один глобальный на весь сервис.
+Difference from a personal single-user bot: the client is created PER USER with
+their own integration token instead of one global client for the whole service.
 
-Ошибки никогда не глотаются молча: возвращается {"error": True, ...}, чтобы модель
-видела факт неудачи и не выдавала намерение за результат.
+Errors are never swallowed silently: the client returns {"error": True, ...} so the
+model can see the failure and cannot present an intention as a result.
 """
 
 import re
@@ -20,7 +20,7 @@ _DASHED_RE = re.compile(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA
 
 
 def normalize_id(raw: str) -> str:
-    """Принимает ссылку на страницу или голый id и возвращает id с дефисами."""
+    """Accepts a page URL or a bare id and returns a dashed UUID."""
     text = (raw or "").strip()
     dashed = _DASHED_RE.search(text)
     if dashed:
@@ -52,7 +52,7 @@ class NotionClient:
                 method.upper(), url, headers=self.headers, json=payload, timeout=self.timeout
             )
         except Exception as exc:
-            return {"error": True, "code": "network", "message": f"Сеть недоступна: {exc}"}
+            return {"error": True, "code": "network", "message": f"Network unavailable: {exc}"}
 
         if response.status_code >= 400:
             try:
@@ -66,9 +66,9 @@ class NotionClient:
         try:
             return response.json()
         except Exception:
-            return {"error": True, "code": "bad_json", "message": "Notion вернул не JSON"}
+            return {"error": True, "code": "bad_json", "message": "Notion returned a non-JSON body"}
 
-    # ───── базовые операции ─────
+    # ───── basic operations ─────
 
     def whoami(self) -> Dict[str, Any]:
         return self.request("GET", "users/me")
@@ -109,7 +109,7 @@ class NotionClient:
         return self.request("PATCH", f"pages/{normalize_id(page_id)}", {"archived": True})
 
 
-# ───── чтение значений свойств ─────
+# ───── reading property values ─────
 
 def read_title(page: Dict[str, Any], name: str) -> str:
     parts = ((page.get("properties", {}).get(name) or {}).get("title")) or []
@@ -140,7 +140,7 @@ def read_relation_ids(page: Dict[str, Any], name: str) -> List[str]:
     return [item.get("id", "") for item in items if item.get("id")]
 
 
-# ───── сборка значений свойств ─────
+# ───── building property values ─────
 
 def title_value(text: str) -> Dict[str, Any]:
     return {"title": [{"type": "text", "text": {"content": str(text)[:2000]}}]}

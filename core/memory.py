@@ -1,8 +1,8 @@
-"""Краткосрочная память диалога.
+"""Short-term conversation memory.
 
-Честное название важно для отчёта: это именно скользящее окно последних реплик
-в оперативной памяти, а не долгосрочная память. Долгосрочная память системы —
-это базы Notion и профили пользователей.
+The honest name matters for the report: this is a sliding window of the latest turns
+kept in RAM, not long-term memory. The long-term memory of the system is the Notion
+databases plus the persisted user profiles.
 """
 
 from collections import defaultdict, deque
